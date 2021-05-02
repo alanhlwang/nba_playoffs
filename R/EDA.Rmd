@@ -1,0 +1,100 @@
+---
+title: "Untitled"
+author: "Alan Wang"
+date: "4/25/2021"
+output: html_document
+---
+```{r}
+library(tidyverse)
+library(data.table)
+library(randomForest)
+library(showtext)
+library(extrafont)
+library(ggplot2)
+library(ggthemes)
+library(gganimate)
+
+font_add(family = "Benton Sans", regular = "/Users/alanwang/Downloads/Font_Bureau_Benton_Sans/TTF/BentonSans-Regular.ttf")
+```
+
+```{r}
+NBA_19_20 <- read.csv("https://raw.githubusercontent.com/hanesy/NBA_Playoffs/master/NBA_data/NBA_data_all_19-20.csv")
+NBA_80_19 <- fread("https://raw.githubusercontent.com/hanesy/NBA_Playoffs/master/NBA_data/NBA_data_all_80-19.csv")
+champ_data <- read.csv("https://raw.githubusercontent.com/alanhlwang/nba_playoffs/main/data/championsdata.csv")
+
+head(NBA_19_20)
+head(NBA_80_19)
+head(champ_data)
+head(NBA_80_19)
+```
+#### EDA
+```{r}
+yr_and_team <- champ_data %>% 
+  group_by(Year) %>% 
+  summarise(team = Team[1],
+            avg_FGP = mean(FGP),
+            avg_PTS = mean(PTS),
+            avg_AST = mean(AST))
+```
+
+```{r}
+options(gganimate.fps = 15)
+
+ppg <- ggplot(data = yr_and_team,
+       mapping = aes(x = Year, y = avg_PTS)) +
+  geom_line(color = "#ff7f50", alpha = 0.6) +
+  geom_point(color = "#ff7f50") +
+  ggtitle("PPG for NBA Champions by Year") +
+  theme_fivethirtyeight() +
+  theme(plot.title = element_text(size = 19,
+                                  family = "Benton Sans", 
+                                  face = "plain",
+                                  hjust = 0.3),
+        text=element_text(size=14,  family="Benton Sans")) +
+  theme(axis.title=element_text()) +
+  xlab("Year") +
+  ylab("PPG") + 
+  transition_reveal(Year) +
+  ease_aes('cubic-in-out')
+
+ast <- ggplot(data = yr_and_team,
+       mapping = aes(x = Year, y = avg_AST)) +
+  geom_line(color = "cornflower blue", alpha = 0.6) +
+  geom_point(color = "cornflower blue") +
+  ggtitle("Assists Per Game for NBA Champions by Year") +
+  theme_fivethirtyeight() +
+  theme(plot.title = element_text(size = 19, family = "Benton Sans", face = "plain",
+                                  hjust = 0.3),
+        text=element_text(size=14,  family="Benton Sans")) +
+  theme(axis.title=element_text()) +
+  xlab("Year") +
+  ylab("AST") + 
+  transition_reveal(Year) +
+  ease_aes('cubic-in-out')
+
+
+fgp <- ggplot(data = yr_and_team,
+       mapping = aes(x = Year, y = avg_FGP)) +
+  geom_line(color = "#00ff7f", alpha = 0.6) +
+  geom_point(color = "#00ff7f") +
+  ggtitle("FGP for NBA Champions by Year") +
+  theme_fivethirtyeight() +
+  theme(plot.title = element_text(size = 19,
+                                  family = "Benton Sans", 
+                                  face = "plain",
+                                  hjust = 0.3),
+        text=element_text(size=14, family="Benton Sans")) +
+  theme(axis.title=element_text()) +
+  xlab("Year") +
+  ylab("FGP") + 
+  transition_reveal(Year) +
+  ease_aes('cubic-in-out')
+```
+
+```{r}
+anim_save("ppg_nba.gif", animation = ppg)
+anim_save("ast_nba.gif", animation = ast)
+anim_save("fgp_nba.gif", animation = fgp)
+```
+
+
