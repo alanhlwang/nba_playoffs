@@ -1,0 +1,46 @@
+---
+title: "Clean"
+author: "Alan Wang"
+date: "5/10/2021"
+output: html_document
+---
+
+```{r}
+rm(list=ls())
+library(tidyverse)
+library(readr)
+```
+
+```{r}
+years_list <- read_rds("year_game_by_game.rds")
+years_df <- read.csv("year_game_by_game.csv", stringsAsFactors = F)
+NBA_80_19 <- fread("https://raw.githubusercontent.com/hanesy/NBA_Playoffs/master/NBA_data/NBA_data_all_80-19.csv")
+```
+
+
+# Clean Team Names
+```{r}
+NBA_80_19 <- NBA_80_19 %>% 
+  mutate(Team = str_replace(Team, "\\*",""))
+```
+
+# Merge w/ game_data by Name, Year
+```{r}
+game_data <- years_df %>% 
+  select(Year, Away, Home, Home_or_away) %>% 
+  rename(Winner = Home_or_away)
+
+NBA_80_19 <- NBA_80_19 %>% 
+  select(-1)
+
+NBA_df <- game_data %>% 
+  left_join(NBA_80_19, by = c("Home" = "Team", "Year")) %>% 
+  left_join(NBA_80_19, by = c("Away" = "Team", "Year"), suffix = c("_home", "_away"))
+
+write.csv(NBA_df, "NBA_data.csv")
+```
+
+# Add 2020 to NBA_80_19
+
+
+
