@@ -1,0 +1,481 @@
+---
+title: "Year Game-by-Game Data"
+author: "Alan Wang"
+date: "5/9/2021"
+output: html_document
+---
+```{r}
+rm(list = ls())
+library(tidyverse)
+library(data.table)
+```
+
+### Scrape BBALL reference to get individual playoff games winners, combine that data with regular season data to predict winner yes or no 
+
+## 1988-2020
+```{r}
+library(rvest)
+
+session <- html_session("https://www.basketball-reference.com/playoffs/")
+
+years <- 2001:2020
+years <- as.character(years)
+
+years_data <- list()
+
+for (i in 1:length(years)) {
+  away <- session %>% 
+      follow_link(years[i]) %>%  
+      follow_link("Schedule and Results") %>% 
+      html_nodes(".left:nth-child(3)") %>% 
+      html_text() %>%  
+      as.character() %>% 
+      as.data.frame(stringsAsFactors = F) %>% 
+      filter(!str_detect(.,"\n")) 
+
+  home <- session %>% 
+    follow_link(years[i]) %>%  
+    follow_link("Schedule and Results") %>% 
+    html_nodes(".left:nth-child(5)") %>% 
+    html_text() %>% 
+    as.character() %>% 
+    as.data.frame(stringsAsFactors = F) %>% 
+    filter(!str_detect(.,"\n"))
+
+  away_score <- session %>% 
+    follow_link(years[i]) %>%  
+    follow_link("Schedule and Results") %>% 
+    html_nodes(".right:nth-child(4)") %>% 
+    html_text() %>% 
+    as.numeric() %>% 
+    as.data.frame(stringsAsFactors = F) %>% 
+    drop_na()
+  
+  home_score <- session %>% 
+    follow_link(years[i]) %>% 
+    follow_link("Schedule and Results") %>% 
+    html_nodes(".right:nth-child(6)") %>% 
+    html_text() %>% 
+    as.numeric() %>%
+    as.data.frame(stringsAsFactors = F) %>% 
+    drop_na()
+  
+  current_data <- cbind.data.frame(away,
+                 away_score,
+                 home,
+                 home_score,
+                 stringsAsFactors = F)
+
+  names(current_data) <- c("Away", "Away PTS", "Home", "Home PTS")
+  
+  current_data <- current_data %>% 
+    mutate(
+      Home_or_away = ifelse(`Home PTS` > `Away PTS`,
+                           "Home",
+                           "Away"),
+      Year = years[i],
+      Winner = ifelse(`Home PTS` > `Away PTS`,
+                      current_data$Home,
+                      current_data$Away
+      )
+      )
+
+  years_data[[years[i]]] <- current_data
+} 
+```
+
+```{r}
+test_years <- 1988:2000
+test_years <- as.character(test_years)
+
+for (i in 1:length(test_years)) {
+  away <- session %>% 
+    follow_link(test_years[i]) %>% 
+    follow_link("Schedule and Results") %>% 
+    html_nodes(".left+ .left") %>% 
+    html_text()
+  
+  home <- session %>% 
+    follow_link(test_years[i]) %>% 
+    follow_link("Schedule and Results") %>% 
+    html_nodes(".left:nth-child(4)") %>% 
+    html_text()
+  
+  away_score <- session %>% 
+      follow_link(test_years[i]) %>%  
+      follow_link("Schedule and Results") %>% 
+      html_nodes(".right:nth-child(3)") %>% 
+      html_text() %>% 
+      as.numeric() %>% 
+      as.data.frame(stringsAsFactors = F) %>% 
+      drop_na()
+  
+  home_score <- session %>% 
+      follow_link(test_years[i]) %>%  
+      follow_link("Schedule and Results") %>% 
+      html_nodes(".right~ .left+ .right") %>% 
+      html_text() %>% 
+      as.numeric() %>% 
+      as.data.frame(stringsAsFactors = F) %>% 
+      drop_na()
+  
+    current_data <- cbind.data.frame(away,
+                 away_score,
+                 home,
+                 home_score,
+                 stringsAsFactors = F)
+
+  names(current_data) <- c("Away", "Away PTS", "Home", "Home PTS")
+  
+  current_data <- current_data %>% 
+    mutate(
+      Home_or_away = ifelse(`Home PTS` > `Away PTS`,
+                           "Home",
+                           "Away"),
+      Year = test_years[i],
+      Winner = ifelse(`Home PTS` > `Away PTS`,
+                      current_data$Home,
+                      current_data$Away
+      )
+      )
+
+  current_data
+  years_data[[test_years[i]]] <- current_data
+}
+
+years_data <- years_data[order(names(years_data))]
+```
+
+
+
+## 1980-1982, 1984-1985
+```{r}
+test_years <- c(1980:1982, 1984:1985)
+test_years <- as.character(test_years)
+
+for (i in 1:length(test_years)) {
+away <- session %>% 
+    follow_link(test_years[i]) %>% 
+    follow_link("Schedule and Results") %>% 
+    html_nodes(".left+ .left") %>% 
+    html_text() %>%  
+    as.character() %>% 
+    as.data.frame(stringsAsFactors = F) %>% 
+    filter(!str_detect(.,"\n"))
+
+home <- session %>% 
+    follow_link(test_years[i]) %>% 
+    follow_link("Schedule and Results") %>% 
+    html_nodes(".left:nth-child(4)") %>% 
+    html_text() %>%  
+    as.character() %>% 
+    as.data.frame(stringsAsFactors = F) %>% 
+    filter(!str_detect(.,"\n"))
+
+away_score <- session %>% 
+    follow_link(test_years[i]) %>% 
+    follow_link("Schedule and Results") %>% 
+    html_nodes(".right:nth-child(3)") %>% 
+    html_text() %>% 
+      as.numeric() %>% 
+      as.data.frame(stringsAsFactors = F) %>% 
+      drop_na()
+  
+  home_score <- session %>% 
+      follow_link(test_years[i]) %>%  
+      follow_link("Schedule and Results") %>% 
+      html_nodes(".right~ .left+ .right") %>% 
+      html_text() %>% 
+      as.numeric() %>% 
+      as.data.frame(stringsAsFactors = F) %>% 
+      drop_na()
+  
+  current_data <- cbind.data.frame(away,
+                 away_score,
+                 home,
+                 home_score,
+                 stringsAsFactors = F)
+
+  names(current_data) <- c("Away", "Away PTS", "Home", "Home PTS")
+  
+  current_data <- current_data %>% 
+    mutate(
+      Home_or_away = ifelse(`Home PTS` > `Away PTS`,
+                           "Home",
+                           "Away"),
+      Year = test_years[i],
+      Winner = ifelse(`Home PTS` > `Away PTS`,
+                      current_data$Home,
+                      current_data$Away
+      )
+    )
+
+  current_data
+  years_data[[test_years[i]]] <- current_data
+}
+
+years_data <- years_data[order(names(years_data))]
+years_data
+```
+
+
+
+## 1983, 1986
+```{r}
+test_years <- c(1983,1986)
+test_years <- as.character(test_years)
+
+for (i in 1:length(test_years)) {
+away <- session %>% 
+    follow_link(test_years[i]) %>% 
+    follow_link("Schedule and Results") %>% 
+    html_nodes(".left:nth-child(3)") %>% 
+    html_text() %>%  
+    as.character() %>% 
+    as.data.frame(stringsAsFactors = F) %>% 
+    filter(!str_detect(.,"\n"))
+
+home <- session %>% 
+    follow_link(test_years[i]) %>% 
+    follow_link("Schedule and Results") %>% 
+    html_nodes(".left:nth-child(5)") %>% 
+    html_text() %>%  
+    as.character() %>% 
+    as.data.frame(stringsAsFactors = F) %>% 
+    filter(!str_detect(.,"\n"))
+
+away_score <- session %>% 
+    follow_link(test_years[i]) %>% 
+    follow_link("Schedule and Results") %>% 
+    html_nodes(".right:nth-child(4)") %>% 
+    html_text() %>% 
+      as.numeric() %>% 
+      as.data.frame(stringsAsFactors = F) %>% 
+      drop_na()
+  
+  home_score <- session %>% 
+      follow_link(test_years[i]) %>%  
+      follow_link("Schedule and Results") %>% 
+      html_nodes(".right:nth-child(6)") %>% 
+      html_text() %>% 
+      as.numeric() %>% 
+      as.data.frame(stringsAsFactors = F) %>% 
+      drop_na()
+  
+  current_data <- cbind.data.frame(away,
+                 away_score,
+                 home,
+                 home_score,
+                 stringsAsFactors = F)
+
+  names(current_data) <- c("Away", "Away PTS", "Home", "Home PTS")
+  
+  current_data <- current_data %>% 
+    mutate(
+      Home_or_away = ifelse(`Home PTS` > `Away PTS`,
+                           "Home",
+                           "Away"),
+      Year = test_years[i],
+      Winner = ifelse(`Home PTS` > `Away PTS`,
+                      current_data$Home,
+                      current_data$Away)
+      )
+
+  current_data
+  years_data[[test_years[i]]] <- current_data
+}
+
+years_data <- years_data[order(names(years_data))]
+
+years_data
+```
+
+
+
+## 1987
+```{r}
+test_years <- 1987
+test_years <- as.character(test_years)
+
+for (i in 1:length(test_years)) {
+away <- session %>% 
+    follow_link(test_years[i]) %>% 
+    follow_link("Schedule and Results") %>% 
+    html_nodes(".iz+ .left") %>% 
+    html_text() %>%  
+    as.character() %>% 
+    as.data.frame(stringsAsFactors = F) %>% 
+    filter(!str_detect(.,"\n"))
+
+home <- session %>% 
+    follow_link(test_years[i]) %>% 
+    follow_link("Schedule and Results") %>% 
+    html_nodes(".left:nth-child(5)") %>% 
+    html_text() %>%  
+    as.character() %>% 
+    as.data.frame(stringsAsFactors = F) %>% 
+    filter(!str_detect(.,"\n"))
+
+away_score <- session %>% 
+    follow_link(test_years[i]) %>% 
+    follow_link("Schedule and Results") %>% 
+    html_nodes(".right:nth-child(4)") %>% 
+    html_text() %>% 
+      as.numeric() %>% 
+      as.data.frame(stringsAsFactors = F) %>% 
+      drop_na()
+  
+  home_score <- session %>% 
+      follow_link(test_years[i]) %>%  
+      follow_link("Schedule and Results") %>% 
+      html_nodes(".right:nth-child(6)") %>% 
+      html_text() %>% 
+      as.numeric() %>% 
+      as.data.frame(stringsAsFactors = F) %>% 
+      drop_na()
+  
+  current_data <- cbind.data.frame(away,
+                 away_score,
+                 home,
+                 home_score,
+                 stringsAsFactors = F)
+
+  names(current_data) <- c("Away", "Away PTS", "Home", "Home PTS")
+  
+  current_data <- current_data %>% 
+    mutate(
+      Home_or_away = ifelse(`Home PTS` > `Away PTS`,
+                           "Home",
+                           "Away"),
+      Year = test_years[i],
+      Winner = ifelse(`Home PTS` > `Away PTS`,
+                      current_data$Home,
+                      current_data$Away
+      )
+      )
+
+  current_data
+  years_data[[test_years[i]]] <- current_data
+}
+
+
+
+years_data <- years_data[order(names(years_data))]
+write_rds(years_data, "year_game_by_game.rds")
+
+years_df <- rbindlist(years_data, )
+write_csv(years_df, "year_game_by_game.csv")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+# library(rvest)
+# 
+# h <- read_html("https://www.basketball-reference.com/playoffs/NBA_2020_games.html")
+# 
+# # extract all team names, corresponding scores, column denoting win
+# 
+# # capture 
+# visitor <- h %>% 
+#   html_nodes(".left:nth-child(3)") %>% 
+#   html_text() %>% 
+#   as.character() 
+# 
+# visitor <- visitor[-84]
+# 
+# home <- h %>% 
+#   html_nodes(".left:nth-child(5)") %>% 
+#   html_text() %>% 
+#   as.character()
+# 
+# visitor_score <- h %>% 
+#   html_nodes(".right:nth-child(4)") %>% 
+#   html_text() %>% 
+#   as.numeric() %>%
+#   as.data.frame(stringsAsFactors = F) %>% 
+#   drop_na()
+# 
+# home_score <- h %>% 
+#   html_nodes(".right:nth-child(6)") %>% 
+#   html_text() %>% 
+#   as.numeric() %>%
+#   as.data.frame(stringsAsFactors = F) %>% 
+#   drop_na()
+# 
+# game_data_20 <- cbind.data.frame(visitor,
+#                  visitor_score,
+#                  home,
+#                  home_score,
+#                  stringsAsFactors = F)
+# 
+# names(game_data_20) <- c("Away", "Away PTS", "Home", "Home PTS")
+# 
+# game_data_20 <- game_data_20 %>% 
+#   mutate(
+#     Winner = ifelse(`Home PTS` > `Away PTS`,
+#                          game_data_20$Home,
+#                          game_data_20$Away),
+#     Home_or_away = ifelse(`Home PTS` > `Away PTS`,
+#                          "Home",
+#                          "Away")
+#     )
+# game_data_20
+```
+
+
+
+```{r}
+# NBA_19_20 <- read.csv("https://raw.githubusercontent.com/hanesy/NBA_Playoffs/master/NBA_data/NBA_data_all_19-20.csv", stringsAsFactors = F)
+# NBA_80_19 <- fread("https://raw.githubusercontent.com/hanesy/NBA_Playoffs/master/NBA_data/NBA_data_all_80-19.csv", stringsAsFactors = F)
+# champ_data <- read.csv("https://raw.githubusercontent.com/alanhlwang/nba_playoffs/main/data/championsdata.csv", stringsAsFactors = F)
+# 
+# head(NBA_19_20)
+# head(NBA_80_19)
+# head(champ_data)
+# head(NBA_80_19)
+```
+
+```{r}
+# qualified_20 <- paste(
+#   c("Bucks", "Raptors", "Celtics", "Pacers", "Heat", "76ers", "Nets", "Magic",
+#     "Lakers", "Clippers", "Nuggets", "Rockets", "Thunder", "Jazz", "Mavericks", "Trail Blazers"),
+#   collapse = "|")
+# 
+# NBA <- NBA_19_20 %>% 
+#   filter(str_detect(Team, qualified_20)) %>% 
+#   group_by(Conf) %>% 
+#   group_split()
+```
+
+
+
+
