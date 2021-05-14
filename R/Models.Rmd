@@ -1,0 +1,137 @@
+---
+title: "Models"
+author: "Name: Alan Wang"
+date: "5/13/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+---
+output: pdf_document
+geometry: "left=2cm,right=2cm,top=3cm,bottom=3cm"
+header-includes:
+  - \usepackage{pdfpages}
+  - \usepackage{fancyhdr}
+  - \pagestyle{fancy}
+---
+
+# Necessary Libraries
+```{r, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(corrplot)
+library(caret)
+library(mlbench)
+library(car)
+```
+
+# Data Preparation
+
+##### Scaling Features
+```{r, warning = FALSE, message = FALSE}
+NBA_data <- read.csv("NBA_data.csv")
+
+NBA_data <- NBA_data %>% 
+  select(-1)
+
+NBA_data <- NBA_data %>% 
+  filter(Year != 2020)
+
+NBA_scale <- NBA_data %>% 
+  select_if(is.numeric) %>% 
+  select(-1) %>% 
+  mutate_each(funs(scale))
+
+NBA_char <- NBA_data %>% 
+  select(Year, Away, Home, Winner, Conf_home, Conf_away)
+
+NBA_df <- cbind(NBA_char, NBA_scale)
+NBA_df2 <- NBA_df %>% 
+  mutate(Winner = ifelse(Winner == "Home", 1, 0)) 
+# keep for glm, comment out for RF, has to be factor not numeric
+```
+
+# Feature Selection
+
+##### Correlated Features
+```{r, warning = FALSE, message = FALSE}
+num_df <- NBA_df %>% 
+  select_if(is.numeric) %>% 
+  select(-2)
+
+correlationMatrix <- cor(num_df)
+head(correlationMatrix)
+corrplot(correlationMatrix)
+
+cor_i <- findCorrelation(correlationMatrix, cutoff = 0.75)
+cor_names <- names(num_df)[cor_i]
+cor_NBA_i <- names(NBA_df) %in% cor_names
+# names(NBA_df)[names(NBA_df) %in% cor_names]
+cor_rm_df <- NBA_df[,!cor_NBA_i]
+```
+
+##### Multicorrelated Features
+```{r, warning = FALSE, message = FALSE}
+m1 <- glm(Winner ~ . ,data = NBA_df2)
+alias(m1) ## Identify perfectly correlated
+
+m2 <- glm(Winner ~ . - L_away - L_home,data = NBA_df2)
+v <- vif(m2)
+vif_i <- v[,3] > 10
+vif_names <- c(rownames(v)[vif_i], "L_away", "L_home")
+vif_nba_i <- names(NBA_df) %in% vif_names
+
+vif_rm_df <- NBA_df[,!vif_nba_i]
+
+# names(NBA_df)[vif_nba_i]
+# names(NBA_df)[names(NBA_df) %in% cor_names]
+```
+
+
+
+# Model Building
+
+##### Data Splitting
+```{r, warning = FALSE, message = FALSE}
+train_i <- createDataPartition(vif_rm_df$Winner, times = 1, p = 0.7, list = F)
+training <- vif_rm_df[train_i,]
+testing <- vif_rm_df[-train_i,]
+```
+
+
+##### Models
+```{r, warning = FALSE, message = FALSE}
+vif_rm_df2 <- NBA_df2[,!vif_nba_i]
+training2 <- vif_rm_df2[train_i,]
+testing2 <- vif_rm_df2[-train_i,]
+
+m1 <- glm(Winner ~ .,data = training2)
+mean(round(predict(m1, testing2)) == testing2$Winner)
+
+
+fitControl <- trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 10,
+                           ## repeated ten times
+                           repeats = 2)
+
+m1 <- train(Winner ~., data = vif_rm_df,
+            method = "glm",
+            family = "binomial",
+            trControl = fitControl)
+
+# m2 <- train(Winner ~., data = vif_rm_df,
+#             method = "rf",
+#             trControl = fitControl)
+# 
+# m3 <- train(Winner ~., data = vif_rm_df,
+#             method = "svmLinear",
+#             trControl = fitControl)
+
+
+
+m1
+```
+
+
