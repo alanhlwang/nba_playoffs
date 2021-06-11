@@ -19,11 +19,15 @@ header-includes:
 
 # Necessary Libraries
 ```{r, warning = FALSE, message = FALSE}
+rm(list=ls())
 library(tidyverse)
 library(corrplot)
 library(caret)
 library(mlbench)
 library(car)
+install.packages("ggcorrplot")
+library(ggcorrplot)
+library(ggthemes)
 ```
 
 # Data Preparation
@@ -34,7 +38,10 @@ NBA_data <- read.csv("NBA_data.csv")
 
 NBA_data <- NBA_data %>% 
   select(-1)
+NBA_data <- NBA_data %>% 
+  select(-c(MP_home, MP_away, G_away, G_home))
 
+NBA_data
 NBA_data <- NBA_data %>% 
   filter(Year != 2020)
 
@@ -50,6 +57,32 @@ NBA_df <- cbind(NBA_char, NBA_scale)
 NBA_df2 <- NBA_df %>% 
   mutate(Winner = ifelse(Winner == "Home", 1, 0)) 
 # keep for glm, comment out for RF, has to be factor not numeric
+
+NBA_df
+NBA_scale
+```
+
+```{r}
+NBA_data_21 <- read.csv("NBA_data_21.csv", stringsAsFactors = T)
+NBA_data_21
+NBA_data_21$Winner <- NA_character_
+
+NBA_data_21$Winner <- as.factor(NBA_data_21$Winner)
+
+NBA_data_21 <- NBA_data_21 %>% 
+  select(-c(REB_home, REB_away, G_home,G_away))
+
+NBA_scale_21 <- NBA_data_21 %>% 
+  select_if(is.numeric) %>% 
+  select(-1) %>% 
+  mutate_each(funs(scale))
+
+NBA_char_21 <- NBA_data_21 %>% 
+  select(Year, Away, Home, Winner, Conf_home, Conf_away)
+NBA_df_21 <- cbind(NBA_char_21, NBA_scale_21)
+
+NBA_df_21
+
 ```
 
 # Feature Selection
@@ -57,35 +90,83 @@ NBA_df2 <- NBA_df %>%
 ##### Correlated Features
 ```{r, warning = FALSE, message = FALSE}
 num_df <- NBA_df %>% 
-  select_if(is.numeric) %>% 
-  select(-2)
+  select_if(is.numeric)
 
-correlationMatrix <- cor(num_df)
+correlationMatrix <- round(cor(num_df), 1)
 head(correlationMatrix)
 corrplot(correlationMatrix)
+cor_i <- findCorrelation(correlationMatrix, cutoff = 0.8)
+corrplot(correlationMatrix[cor_i, cor_i], 
+         method = "color")
+cor_i2 <- colnames(num_df) %in% colnames(num_df)[cor_i][str_detect(colnames(num_df)[cor_i], "away")]
 
-cor_i <- findCorrelation(correlationMatrix, cutoff = 0.75)
+p1 <- corrplot(correlationMatrix[cor_i2, cor_i2], type= "lower",
+               colors = c("blue","white"))
+attributes(p1)$dimnames[[1]]<- c("FGM", "3PA", "2PM","2PA", "FTM")
+attributes(p1)$dimnames[[2]]<- c("FGM", "3PA", "2PM","2PA", "FTM")
+p3 <- ggcorrplot(p1,hc.order = T,
+          colors = c("#ff3333", "white", "#3377ff"),
+          outline.color = "white") +
+  ggtitle("Correlogram") +
+  theme_fivethirtyeight() +
+  theme(plot.title = element_text(size = 15,
+                                  family = "Benton Sans", 
+                                  face = "plain",
+                                  hjust = 0.5),
+        text=element_text(size=14, family="Benton Sans")) +
+  theme(axis.title=element_text()) +
+  xlab("") + ylab("")
+ggsave("cor",
+       device = "png",
+       units = "cm",
+       width = 20,
+       height = 15)
+NBA_df[,cor_i]
 cor_names <- names(num_df)[cor_i]
 cor_NBA_i <- names(NBA_df) %in% cor_names
 # names(NBA_df)[names(NBA_df) %in% cor_names]
 cor_rm_df <- NBA_df[,!cor_NBA_i]
+NBA_df[,cor_NBA_i]
 ```
 
 ##### Multicorrelated Features
 ```{r, warning = FALSE, message = FALSE}
+library(mctest)
 m1 <- glm(Winner ~ . ,data = NBA_df2)
 alias(m1) ## Identify perfectly correlated
 
 m2 <- glm(Winner ~ . - L_away - L_home,data = NBA_df2)
 v <- vif(m2)
-vif_i <- v[,3] > 10
+v2 <- as.data.frame(v)
+rownames(v2)
+v3 <- v2 %>% 
+  filter(rownames(v2) == "X3PA_home"|rownames(v2) == "X3P_home"|rownames(v2) == "X3PA_away"|rownames(v2) == "X3P_away"|rownames(v2) == "X2PA_home")
+v3 <- v3 %>% 
+  select(GVIF)
+
+rownames(v3) <- c("3PA_home", "3PM_home", "3PA_away","3PM_away", "2PA_home")
+v3
+vif(m2)
 vif_names <- c(rownames(v)[vif_i], "L_away", "L_home")
 vif_nba_i <- names(NBA_df) %in% vif_names
-
+NBA_df
 vif_rm_df <- NBA_df[,!vif_nba_i]
-
+colnames(vif_rm_df)
 # names(NBA_df)[vif_nba_i]
 # names(NBA_df)[names(NBA_df) %in% cor_names]
+vif_rm_df
+```
+
+##### RFE
+```{r}
+control <- rfeControl(functions = lrFuncs,
+                      method = "cv")
+
+NBA_df2[-4]
+results <- rfe(as.matrix(NBA_df2[-4]),
+               as.matrix(NBA_df2[4]),
+               sizes = c(1:53),
+               rfeControl = control)
 ```
 
 
@@ -97,6 +178,13 @@ vif_rm_df <- NBA_df[,!vif_nba_i]
 train_i <- createDataPartition(vif_rm_df$Winner, times = 1, p = 0.7, list = F)
 training <- vif_rm_df[train_i,]
 testing <- vif_rm_df[-train_i,]
+```
+
+```{r}
+install.packages("ROSE")
+library(ROSE)
+data_balanced <- ovun.sample(Winner ~ ., data = vif_rm_df, method = "both", p=0.5)
+data_balanced2 <- ovun.sample(Winner ~ ., data = vif_rm_df, method = "under", N= 2000)
 ```
 
 
@@ -121,6 +209,51 @@ m1 <- train(Winner ~., data = vif_rm_df,
             family = "binomial",
             trControl = fitControl)
 
+write_rds(m1, "model1.rds")
+ggplot(varImp(m1))
+df <- data.frame(varImp(m1)$importance)
+index <- rownames(df) %in% rownames(df)[!str_detect(rownames(df), "\\`")]
+names <- rownames(df)[index]
+df2 <- df[index,]
+
+df3 <- data.frame(variable = names,
+           importance = df2)
+df3$variable <- factor(df3$variable)
+
+df3 <- df3 %>% 
+  arrange(desc(importance)) 
+df3 <- df3[1:10,]
+df3$variable <- as.character(df3$variable)
+df3$variable
+df3$variable <- c("Wins (Home)", "Wins (Away)", "2 Point % (Away)", "2 Point % (Home)", "West (Away)", "DRB (Away)", "AST (Away)", "ORB (Away)", "3 Point % (Away)", "FT % (Away)")
+
+variable_imp <- ggplot(data = df3,
+       aes(reorder(variable, importance,sum), importance)) + 
+  geom_col(aes(fill = importance)) + 
+  ggtitle("Variable Importance") +
+  scale_fill_gradient2(low = "#ffc3a0",
+                       high = "#ffafbd") +
+  theme_fivethirtyeight() +
+  theme(plot.title = element_text(size = 15,
+                                  family = "Benton Sans", 
+                                  face = "plain",
+                                  hjust = 0.5),
+        text=element_text(size=10,  family="Benton Sans")) +
+  theme(axis.title=element_text()) +
+  ylab("Importance") +
+  xlab(NULL) +
+  coord_flip()
+
+ggsave(
+  "varimp",
+  variable_imp,
+  device = "png",
+  width = 30,
+  height = 15,
+  units ="cm"
+)
+  
+  
 # m2 <- train(Winner ~., data = vif_rm_df,
 #             method = "rf",
 #             trControl = fitControl)
@@ -128,10 +261,221 @@ m1 <- train(Winner ~., data = vif_rm_df,
 # m3 <- train(Winner ~., data = vif_rm_df,
 #             method = "svmLinear",
 #             trControl = fitControl)
-
-
-
-m1
 ```
+
+
+```{r}
+Winner <- predict(m1, NBA_df_21)
+NBA_df_21$Winner <- Winner
+
+NBA_East_1 <- NBA_df_21 %>% 
+  filter(Away == "Washington Wizards" | Away == "Philadelphia 76ers") %>% 
+  mutate(Series = "East1-8")
+East_1_results <- NBA_East_1 %>% 
+  select(Home, Away, Winner)
+East_1_results_df <- rbind(c("Philadelphia 76ers", "Washington Wizards", "Home"), East_1_results)
+East_1_results <- data.frame(Team = c("Philadelphia 76ers","Washington Wizards"),
+                             Wins = c(4,0),
+                             Winner ="Philadelphia 76ers" )
+
+
+NBA_East_4 <- NBA_df_21 %>% 
+  filter(Away == "Atlanta Hawks" | Away == "New York Knicks") %>% 
+  mutate(Series = "East4-5")
+NBA_East_4 <- NBA_East_4[-1,]
+East_4_results <- NBA_East_4 %>% 
+  select(Home, Away, Winner)
+East_4_results_df <- rbind(c("New York Knicks", "Atlanta Hawks", "Away"), c("New York Knicks", "Atlanta Hawks" ,"Home"), East_4_results)
+East_4_results <- data.frame(Team = c("Atlanta Hawks","New York Knicks"),
+                             Wins = c(4,2),
+                             Winner ="Atlanta Hawks" )
+
+
+East_4_results_df
+
+
+NBA_West_1 <- NBA_df_21 %>% 
+  filter(Away == "Memphis Grizzlies" | Away == "Utah Jazz") %>% 
+  mutate(Series = "West1-8")
+West_1_results <- NBA_West_1 %>% 
+  select(Home, Away, Winner)
+West_1_results_df <- rbind(c("Utah Jazz", "Memphis Grizzlies", "Away"), West_1_results)
+West_1_results <- data.frame(Team = c("Utah Jazz", "Memphis Grizzlies"),
+                             Wins = c(4,1),
+                             Winner ="Utah Jazz")
+
+
+NBA_East_3 <- NBA_df_21 %>% 
+  filter(Away == "Milwaukee Bucks" | Away == "Miami Heat") %>% 
+  mutate(Series = "East3-6")
+East_3_results <- NBA_East_3 %>% 
+  select(Home, Away, Winner)
+East_3_results
+East_3_results_df <- rbind(c("Milwaukee Bucks", "Miami Heat", "Home"), c("Milwaukee Bucks", "Miami Heat", "Home"), East_3_results)
+East_3_results <- data.frame(Team = c("Milwaukee Bucks", "Miami Heat"),
+                             Wins = c(4,3),
+                             Winner ="Milwaukee Bucks")
+
+
+
+NBA_East_2 <- NBA_df_21 %>% 
+  filter(Away == "Brooklyn Nets" | Away == "Boston Celtics") %>% 
+  mutate(Series = "East2-7")
+East_2_results <- NBA_East_2 %>% 
+  select(Home, Away, Winner)
+East_2_results_df <- rbind(c("Brooklyn Nets", "Boston Celtics", "Home"), c("Brooklyn Nets", "Boston Celtics", "Home"), East_2_results)
+East_2_results <- data.frame(Team = c("Brooklyn Nets", "Boston Celtics"),
+                             Wins = c(4,0),
+                             Winner ="Brooklyn Nets")
+
+
+NBA_West_2 <- NBA_df_21 %>% 
+  filter(Away == "Phoenix Suns" | Away == "Los Angeles Lakers") %>% 
+  mutate(Series = "West2-7")
+West_2_results <- NBA_West_2 %>% 
+  select(Home, Away, Winner)
+West_2_results_df <- rbind(c("Phoenix Suns", "Los Angeles Lakers", "Home"), c("Phoenix Suns", "Los Angeles Lakers", "Away"), West_2_results)
+West_2_results <- data.frame(Team = c("Phoenix Suns", "Los Angeles Lakers"),
+                             Wins = c(2,4),
+                             Winner ="Los Angeles Lakers")
+
+
+NBA_West_4 <- NBA_df_21 %>% 
+  filter(Away == "Los Angeles Clippers" | Away == "Dallas Mavericks") %>% 
+  mutate(Series = "West4-5")
+West_4_results <- NBA_West_4 %>% 
+  select(Home, Away, Winner)
+West_4_results_df <- rbind(c("Los Angeles Clippers", "Dallas Mavericks", "Away"), c("Los Angeles Clippers", "Dallas Mavericks", "Away"), West_4_results)
+West_4_results <- data.frame(Team = c("Los Angeles Clippers", "Dallas Mavericks"),
+                             Wins = c(0,4),
+                             Winner ="Dallas Mavericks")
+
+
+NBA_West_3 <- NBA_df_21 %>% 
+  filter(Away == "Denver Nuggets" | Away == "Portland Trail Blazers") %>% 
+  mutate(Series = "West3-6")
+West_3_results <- NBA_West_3 %>% 
+  select(Home, Away, Winner)
+West_3_results_df <- rbind(c("Denver Nuggets", "Portland Trail Blazers", "Away"), c("Denver Nuggets", "Portland Trail Blazers", "Home"), West_3_results)
+West_3_results <- data.frame(Team = c("Denver Nuggets", "Portland Trail Blazers"),
+                             Wins = c(2,4),
+                             Winner ="Portland Trail Blazers")
+
+results <- rbind(East_1_results,
+      East_2_results,
+      East_3_results,
+      East_4_results,
+      West_1_results,
+      West_2_results,
+      West_3_results,
+      West_4_results)
+results
+
+as.character(unique(results$Winner))
+write.csv(results, "1st-round-results.csv")
+
+```
+
+```{r}
+r2 <- read.csv("r2.csv", stringsAsFactors = T)
+r2$Winner <- NA_character_
+
+r2$Winner <- as.factor(r2$Winner)
+
+r2 <- r2 %>% 
+  select(-c(REB_home, REB_away, G_home,G_away))
+
+r2_scale <- r2 %>% 
+  select_if(is.numeric) %>% 
+  select(-1) %>% 
+  mutate_each(funs(scale))
+r2_scale
+r2_char <- r2 %>% 
+  select(Year, Away, Home, Winner, Conf_home, Conf_away)
+r2_df <- cbind(r2_char, r2_scale)
+
+Winner_r2 <- predict(m1, r2_df)
+r2_df$Winner <- Winner_r2
+r2_df
+r2_df %>% 
+  select(Away, Home, Winner)
+
+```
+
+```{r}
+r3 <- read.csv("r3.csv", stringsAsFactors = T)
+r3$Winner <- NA_character_
+
+r3$Winner <- as.factor(r3$Winner)
+
+r3 <- r3 %>% 
+  select(-c(REB_home, REB_away, G_home,G_away))
+
+r3_scale <- r3 %>% 
+  select_if(is.numeric) %>% 
+  select(-1) %>% 
+  mutate_each(funs(scale))
+r3_scale
+r3_char <- r3 %>% 
+  select(Year, Away, Home, Winner, Conf_home, Conf_away)
+r3_df <- cbind(r3_char, r3_scale)
+r3_df
+Winner_r3 <- predict(m1, r3_df)
+r3_df$Winner <- Winner_r3
+
+
+r3_df %>% 
+  select(Away, Home, Winner)
+```
+
+```{r}
+
+home <- c(c(rep("Brooklyn Nets",2), rep("Utah Jazz",2),"Brooklyn Nets", "Utah Jazz", "Brooklyn Nets")
+)
+
+away <- c(c(rep("Utah Jazz",2), rep("Brooklyn Nets",2), "Utah Jazz", "Brooklyn Nets", "Utah Jazz"))
+round_4 <- data.frame(
+           Year = 2021,
+           Away = away,
+           Home = home,
+           Winner = NA_character_,
+           stringsAsFactors = F)
+
+round_4
+
+r4 <- round_4 %>% 
+  left_join(NBA_21, by = c("Home" = "Team", "Year")) %>% 
+  left_join(NBA_21, by = c("Away" = "Team", "Year"), suffix = c("_home", "_away"))
+colnames(r4)[str_detect(colnames(r4), "\\d")] <- c("X3P_home",  "X3PA_home", "X3P._home", "X2PA_home", "X2P_home",  "X2P._home", "X3P_away",  "X3PA_away", "X3P._away", "X2PA_away", "X2P_away", "X2P._away")
+colnames(r4) <- str_replace(colnames(r4), "%",".")
+r4$Winner <- NA_character_
+
+r4$Winner <- as.factor(r4$Winner)
+
+r4 <- r4 %>% 
+  select(-c(REB_home, REB_away, G_home,G_away))
+
+r4_scale <- r4 %>% 
+  select_if(is.numeric) %>% 
+  select(-1) %>% 
+  mutate_each(funs(scale))
+r4_scale
+r4_char <- r4 %>% 
+  select(Year, Away, Home, Winner, Conf_home, Conf_away)
+r4_df <- cbind(r4_char, r4_scale)
+
+Winner_r4 <- predict(m1, r4_df)
+r4_df$Winner <- Winner_r4
+r4_df
+r4_df %>% 
+  select(Away, Home, Winner)
+
+vi <- varImp(m1)
+
+vi$importance %>% 
+  arrange(desc(Overall))
+m1$finalModel
+```
+
 
 

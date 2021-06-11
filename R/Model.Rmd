@@ -1,0 +1,183 @@
+---
+title: "Model"
+author: "Alan Wang"
+date: "5/10/2021"
+output: html_document
+---
+```{r}
+library(tidyverse)
+```
+
+```{r}
+NBA_data <- read.csv("NBA_data.csv")
+
+NBA_data <- NBA_data %>% 
+  select(-1)
+
+NBA_data <- NBA_data %>% 
+  filter(Year != 2020)
+
+NBA_scale <- NBA_data %>% 
+  select_if(is.numeric) %>% 
+  select(-1) %>% 
+  mutate_each(funs(scale))
+
+NBA_char <- NBA_data %>% 
+  select(Year, Away, Home, Winner, Conf_home, Conf_away)
+
+NBA_df <- cbind(NBA_char, NBA_scale)
+NBA_df <- NBA_df %>% 
+  mutate(Winner = ifelse(Winner == "Home", 1, 0)) # comment out for RF, has to be factor not numeric
+```
+
+## Feature Selection
+```{r}
+library(mlbench)
+library(caret)
+install.packages("corrplot")
+library(corrplot)
+
+num_df <- NBA_df %>% 
+  select_if(is.numeric) %>% 
+  select(-2)
+
+correlationMatrix <- cor(num_df)
+print(correlationMatrix)
+corrplot(correlationMatrix)
+
+cor_i <- findCorrelation(correlationMatrix, cutoff = 0.75)
+cor_i
+num_df[cor_i]
+cor_names <- names(num_df)[cor_i]
+cor_names
+cor_NBA_i <- names(NBA_df) %in% cor_names
+names(NBA_df)[names(NBA_df) %in% cor_names]
+NBA_df[,!cor_NBA_i]
+```
+
+
+
+```{r}
+test_df <- NBA_df %>% 
+  select_if(is.numeric)
+
+test_df <- cbind(Winner = NBA_df$Winner, test_df)
+
+test_df
+control <- rfeControl(functions = rfFuncs, method = "cv", number = 10)
+results <- rfe(test_df[,-1], test_df[,1], sizes = c(10,20, 30:35), rfeControl = control)
+
+predictors(results)
+print(results)
+plot(results, type = c("g","o"))
+
+glm()
+```
+
+
+
+
+```{r}
+test_df <- NBA_df %>% 
+  filter(Year == 2019)
+
+train_df <- NBA_df %>% 
+  filter(Year != 2019)
+m1 <- glm(Winner ~ . ,data = train_df )
+alias(m1)
+
+library(car)
+
+m1 <- glm(Winner ~ . - L_away - L_home,data = train_df )
+v <- vif(m1)
+vif_i <- v[,3] > 10
+vif_names <- rownames(v)[vif_i]
+vif_nba_i <- names(NBA_df) %in% vif_names
+new_data <- NBA_df[,!vif_nba_i]
+new_data
+m2 <- glm(Winner ~ . - L_away - L_home,data =new_data )
+mean(round(predict(m2, test_df)) == test_df$Winner)
+
+```
+
+
+
+
+
+```{r}
+m1 <- glm(Winner ~ . - Away - Home - Conf_home - Conf_away - L_home - L_away,data = train_df)
+mean(round(predict(m1, test_df)) == test_df$Winner)
+```
+
+
+
+
+
+```{r}
+library(caret)
+
+predictions <- predict(m1, test_df)
+m1
+R2(predictions, test_df$Winner)
+RMSE(predictions, test_df$Winner)
+MAE(predictions, test_df$Winner)
+
+mean(round(predict(m1, test_df)) == test_df$Winner)
+
+
+mean(predict(m1, test_df) == test_df$Winner)
+```
+
+
+
+```{r}
+i <- createDataPartition(NBA_df$Year,
+                    times = 1,
+                    p = 0.7,
+                    list = F)
+
+train <- NBA_df[i,]
+test <- NBA_df[-i,]
+
+train_control <- trainControl(method = "repeatedcv",
+                              number = 10,
+                              search = "grid")
+
+train(Winner ~ .,
+      data = NBA_df,
+      method = "xgbTree",
+      trControl = train_control)
+```
+
+
+```{r}
+library(randomForest)
+
+library(e1071)
+
+train_df <- train_df %>% 
+  drop_na()
+
+
+m2 <- randomForest(as.factor(Winner) ~ . - Away - Home - Conf_home - Conf_away - L_home - L_away,data = train_df, ntree = 200,importance = T)
+m2
+
+mean(predict(m2, test_df) == test_df$Winner)
+```
+
+
+
+
+
+```{r}
+d_m <- dummyVars(Winner ~ . - Away,data = train_df)
+training_set <- as.data.frame(predict(d_m, newdata = train_df))
+training_set <- cbind(Winner = train_df$Winner, training_set)
+```
+
+```{r}
+testing_set <- as.data.frame(predict(d_m, newdata = test_df))
+testing_set <- cbind(Winner = test_df$Winner, testing_set)
+```
+
+

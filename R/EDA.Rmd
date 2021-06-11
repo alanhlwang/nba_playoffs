@@ -22,10 +22,10 @@ NBA_19_20 <- read.csv("https://raw.githubusercontent.com/hanesy/NBA_Playoffs/mas
 NBA_80_19 <- fread("https://raw.githubusercontent.com/hanesy/NBA_Playoffs/master/NBA_data/NBA_data_all_80-19.csv")
 champ_data <- read.csv("https://raw.githubusercontent.com/alanhlwang/nba_playoffs/main/data/championsdata.csv")
 
-head(NBA_19_20)
-head(NBA_80_19)
-head(champ_data)
-head(NBA_80_19)
+NBA_80_19 <- NBA_80_19 %>% 
+  mutate(Team = str_replace(Team, "\\*",""))
+NBA_19_20 <- NBA_19_20 %>% 
+  mutate(Team = str_replace(Team, "\\*",""))
 ```
 #### EDA
 ```{r}
@@ -97,4 +97,194 @@ anim_save("ast_nba.gif", animation = ast)
 anim_save("fgp_nba.gif", animation = fgp)
 ```
 
+
+```{r}
+NBA_data <- read.csv("NBA_data.csv")
+NBA_data_21 <- read.csv("NBA_21.csv", stringsAsFactors = T, row.names = 1)
+NBA_data_21
+stats_21 <- read.csv("2021_stats.csv", row.names = 1)
+stats_21
+past_data <- NBA_80_19 %>% 
+  select(-MP)
+data_2019 <- NBA_19_20 %>% 
+  select(-MP)
+
+current_data <- NBA_data_21
+colnames(current_data) <- str_replace(colnames(current_data), "\\.", "%")
+colnames(current_data) <- str_replace(colnames(current_data), "X", "")
+colnames(data_2019) <- str_replace(colnames(data_2019), "\\.", "%")
+colnames(data_2019) <- str_replace(colnames(data_2019), "X", "")
+
+
+
+colnames(current_data)[!colnames(current_data) %in% colnames(past_data)]
+current_data <- current_data %>% 
+  select(-REB)
+past_data <- past_data %>% 
+  select(-RK)
+data_2019 <-data_2019 %>% 
+  select(-RK)
+
+
+current_data <- current_data[,order(colnames(current_data))]
+order_past <- colnames(past_data)[order(colnames(past_data))]
+order_2019 <- colnames(data_2019)[order(colnames(data_2019))]
+past_data <- past_data %>% 
+  select(order_past)
+data_2019 <- data_2019 %>% 
+  select(order_2019)
+data_2019
+current_data
+past_df <- as.data.frame(past_data)
+past_df <- past_df %>% 
+  mutate_if(is.character,as.factor)
+
+full_df <- rbind(past_df, data_2019, current_data)
+
+write.csv(full_df, "NBA_all_data.csv")
+```
+
+```{r}
+library(ggimage)
+efficiency_df <- full_df %>% 
+  group_by(Year) %>% 
+  summarise(Three_Pt_Attempts = mean(`3PA`),
+            Three_Pt_P = mean(`3P%`),
+            Two_Pt_Attempts = mean(`2PA`),
+            Two_Pt_P = mean(`2P%`),
+            FG_P = mean(`FG%`))
+
+efficiency_df$steph_curry <- sample(c("/Users/alanwang/Downloads/three_point.png"),size = nrow(efficiency_df), replace = T)
+efficiency_df$ben_simmons <- sample(c("/Users/alanwang/Downloads/brick2.png"),size = nrow(efficiency_df), replace = T)
+
+```
+
+
+```{r}
+options(gganimate.fps = 15, duration = 3)
+
+three <- ggplot(data = efficiency_df,
+       mapping = aes(x = Year, y = Three_Pt_Attempts)) +
+  geom_line(color = "#ff7f50", alpha = 0.9) +
+  ggtitle("3PA by Year") +
+  theme_fivethirtyeight() +
+  theme(plot.title = element_text(size = 19,
+                                  family = "Benton Sans", 
+                                  face = "plain",
+                                  hjust = 0.5),
+        text=element_text(size=14,  family="Benton Sans")) +
+  theme(axis.title=element_text()) +
+  xlab("Year") +
+  ylab("3PA") + 
+  transition_reveal(Year) +
+  ease_aes('cubic-in-out')
+
+two_three <- ggplot(data = efficiency_df,
+       mapping = aes(x = Year, y = Three_Pt_Attempts)) +
+  geom_line(color = "#ff7f50", alpha = 0.9) +
+  geom_line(data = efficiency_df,
+            mapping = aes(x = Year, y = Two_Pt_Attempts),
+            color = 'cornflower blue', alpha = 0.9) +
+  ggtitle("2PA vs 3PA by Year") +
+  theme_fivethirtyeight() +
+  theme(plot.title = element_text(size = 19,
+                                  family = "Benton Sans", 
+                                  face = "plain",
+                                  hjust = 0.5),
+        text=element_text(size=14,  family="Benton Sans")) +
+  theme(axis.title=element_text()) +
+  xlab("Year") +
+  ylab("Attempts") + 
+  transition_reveal(Year) +
+  ease_aes('cubic-in-out') 
+
+two <- ggplot(data = efficiency_df,
+       mapping = aes(x = Year, y = Two_Pt_Attempts)) +
+  geom_line(color = "cornflower blue", alpha = 0.9) +
+  ggtitle("2PA by Year") +
+  theme_fivethirtyeight() +
+  theme(plot.title = element_text(size = 19,
+                                  family = "Benton Sans", 
+                                  face = "plain",
+                                  hjust = 0.5),
+        text=element_text(size=14,  family="Benton Sans")) +
+  theme(axis.title=element_text()) +
+  xlab("Year") +
+  ylab("2PA") + 
+  transition_reveal(Year) +
+  ease_aes('cubic-in-out')
+
+anim_save("two.gif", animation = two)
+anim_save("three.gif", animation = three)
+anim_save("two_three.gif", animation = two_three)
+two_three
+
+```
+
+```{r}
+full_df
+tran <- full_df %>% 
+  group_by(Year)%>%      
+  mutate(rank = rank(-W),
+         Value_lbl = paste0(" ",W)) %>%
+  group_by(Team) %>%
+  filter(rank <= 10)
+```
+
+```{r}
+ggplot(tran, aes(rank, group = Team))+
+  geom_tile(aes(y = W/2,
+                height = W,
+                width = 0.9), alpha = 0.8, color = NA) +
+  geom_text(aes(y = 0, label = paste(Team, " ")), vjust = 0.2, hjust = 1, size = 7) + #determine size of the Nationlity label
+  geom_text(aes(y=W,label = Value_lbl, hjust=0),size = 8 ) +  #determine size of the value label
+  coord_flip(clip = "off", expand = TRUE) +
+  scale_x_reverse() +
+  theme_minimal() +
+  theme(axis.line=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        legend.position="none",
+        panel.background=element_blank(),
+        panel.border=element_blank(),
+        panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.grid.major.x = element_line( size=.1, color="grey" ),
+        panel.grid.minor.x = element_line( size=.1, color="grey" ),
+        plot.title=element_text(size=25, hjust=0.5, face="bold",     colour="red", vjust=-1),
+        plot.subtitle=element_text(size=18, hjust=0.5, face="italic", color="red"),
+        plot.caption =element_text(size=12, hjust=0.5, face="italic", color="red"),
+        plot.background=element_blank()) +
+  transition_states(Year, transition_length = 4, state_length = 1) +
+  ease_aes('sine-in-out')
+```
+
+
+
+## bar plot showing cumulative wins by team in year
+```{r}
+install.packages("runner")
+library(runner)
+library(dplyr)
+
+test <- full_df %>%
+  group_by(Year)%>%
+  mutate(totalW=cumsum(W))
+
+for (i in 1980:2021) {
+  previous_wins <- full_df %>% 
+    filter(Year <= i) %>% 
+    group_by(Team) %>% 
+    mutate(totalW = sum(W)) %>% 
+    select(totalW)
+  full_df %>% 
+    filter(Year =i) %>% 
+    group_by(Team) %>% 
+    mutate(totalW = previous_wins)
+}
+
+```
 

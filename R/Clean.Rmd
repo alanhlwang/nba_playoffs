@@ -9,6 +9,7 @@ output: html_document
 rm(list=ls())
 library(tidyverse)
 library(readr)
+library(data.table)
 ```
 
 ```{r}
@@ -29,18 +30,217 @@ NBA_80_19 <- NBA_80_19 %>%
 game_data <- years_df %>% 
   select(Year, Away, Home, Home_or_away) %>% 
   rename(Winner = Home_or_away)
-
+game_data
 NBA_80_19 <- NBA_80_19 %>% 
   select(-1)
+NBA_80_19
+game_data
 
 NBA_df <- game_data %>% 
   left_join(NBA_80_19, by = c("Home" = "Team", "Year")) %>% 
   left_join(NBA_80_19, by = c("Away" = "Team", "Year"), suffix = c("_home", "_away"))
 
 write.csv(NBA_df, "NBA_data.csv")
+
 ```
 
 # Add 2020 to NBA_80_19
+```{r}
+library(rvest)
+
+session <- read_html("https://www.espn.com/nba/stats/team/_/season/2021/seasontype/2")
+team_name <- session %>%  
+  html_nodes(".TeamLink__Logo+ .AnchorLink") %>% 
+  html_text()
+
+all <- session %>% 
+  html_nodes(".Table__Scroller .Table__TD div") %>% 
+  html_text()
+
+all_split <- split(all, ceiling(seq_along(all)/19))
+names(all_split) <- team_name
+df2 <- as.data.frame(all_split)
+NBA_21 <- as.data.frame(t(df2))
+
+
+
+stat_names <- session %>% 
+  html_nodes(".Table__Scroller .Table__TH , .Table__Scroller .Table__TH div") %>% 
+  html_text()
+stat_names <- stat_names[-1]
+colnames(NBA_21) <- stat_names
+
+```
+
+
+## Clean NBA_21
+```{r}
+NBA_21$Team <- str_replace(rownames(NBA_21), 
+                           "\\.", " ")
+NBA_21$Team <- str_replace(NBA_21$Team, 
+                           "\\.", " ")
+rownames(NBA_21) <- NULL
+
+conf <- NBA_80_19 %>% 
+  filter(Year == 2019) %>% 
+  select(Team, Conf)
+
+NBA_21 <- NBA_21 %>% 
+  left_join(conf, by = "Team")
+NBA_21$Conf[10] <- "West"
+
+nums_21 <- NBA_21 %>% 
+  mutate_if(is.factor, as.character) %>% 
+  select(GP:PF) %>% 
+  mutate_if(is.character, as.numeric)
+nums_21
+
+team_21 <- NBA_21 %>% 
+  select(Team, Conf)
+team_21$Year <- 2021
+
+NBA_21 <- cbind(team_21, nums_21)
+
+NBA_21
+
+names(NBA_21)[str_detect(names(NBA_21), "DR")] <- "DRB"
+names(NBA_21)[str_detect(names(NBA_21), "OR")] <- "ORB"
+names(NBA_21)[str_detect(names(NBA_21), "TO")] <- "TOV"
+names(NBA_21)[str_detect(names(NBA_21), "FGM")] <- "FG"
+names(NBA_21)[str_detect(names(NBA_21), "3PM")] <- "3P"
+names(NBA_21)[str_detect(names(NBA_21), "GP")] <- "G"
+names(NBA_21)[str_detect(names(NBA_21), "GP")] <- "G"
+names(NBA_21)[str_detect(names(NBA_21), "FTM")] <- "FT"
+NBA_21 <- NBA_21 %>% 
+  mutate(G = as.integer(G),
+         Year = as.integer(Year),
+         `3P%` = `3P%` / 100,
+         `FG%` = `FG%` / 100,
+         `FT%` = `FT%` / 100,)
+NBA_21
+```
+
+```{r}
+session <- read_html("https://www.espn.com/nba/standings")
+team_21 <- session %>% 
+  html_nodes(".hide-mobile .AnchorLink") %>% 
+  html_text()
+W_21 <- session %>% 
+  html_nodes(".Table__TD:nth-child(1) .stat-cell") %>% 
+  html_text() %>% 
+  as.integer()
+
+standings_21 <- data.frame(Team = team_21,
+           W = W_21,
+           L = as.integer(72-W_21),
+           stringsAsFactors = F)
+
+NBA_21 <- NBA_21 %>% 
+  left_join(standings_21, by = "Team")
+
+colnames(NBA_21)
+colnames(NBA_80_19)
+
+NBA_21 <- NBA_21 %>% 
+  mutate(`2PA` = FGA - `3PA`,
+         `2P` = FG - `3P`,
+         `2P%` = `2P`/`2PA`)
+
+NBA_21$Team[10] = "Los Angeles Clippers"
+
+NBA_21
+write.csv(NBA_21, "NBA_21.csv")
+```
+
+
+# Get game by game data for playoffs 2021 and merge with NBA_21
+```{r}
+library(rvest)
+session <- read_html("https://www.basketball-reference.com/playoffs/NBA_2021_games.html")
+away <- session %>% 
+  html_nodes(".left:nth-child(3)") %>% 
+  html_text()
+
+home <- session %>% 
+  html_nodes(".left:nth-child(5)") %>% 
+  html_text()
+
+away <- away[-(1:13)]
+away <- away[-length(away)]
+home <- home[-(1:13)]
+home
+away
+
+round_1 <- data.frame(
+           Year = 2021,
+           Away = away,
+           Home = home,
+           Winner = NA_character_,
+           stringsAsFactors = F)
+
+NBA_21$Team <- str_replace(NBA_21$Team, "LA", "Los Angeles")
+
+NBA_21_df <- round_1 %>% 
+  left_join(NBA_21, by = c("Home" = "Team", "Year")) %>% 
+  left_join(NBA_21, by = c("Away" = "Team", "Year"), suffix = c("_home", "_away"))
+write_csv(NBA_21_df, "NBA_data_21.csv")
+NBA_21_df
+read_csv("NBA_data_21.csv")
+```
+
+
+```{r}
+home <- c(c(rep("Philadelphia 76ers",2), rep("Atlanta Hawks",2),"Philadelphia 76ers", "Atlanta Hawks", "Philadelphia 76ers"),
+          c(rep("Brooklyn Nets",2), rep("Milwaukee Bucks",2),"Brooklyn Nets", "Milwaukee Bucks", "Brooklyn Nets"),
+          c(rep("Utah Jazz",2), rep("Dallas Mavericks",2),"Utah Jazz", "Dallas Mavericks", "Utah Jazz"),
+          c(rep("Portland Trail Blazers",2), rep("Los Angeles Lakers",2),"Portland Trail Blazers", "Los Angeles Lakers", "Portland Trail Blazers")
+)
+
+
+away <- c(c(rep("Atlanta Hawks",2), rep("Philadelphia 76ers",2), "Atlanta Hawks", "Philadelphia 76ers", "Atlanta Hawks"),
+          c(rep("Milwaukee Bucks",2), rep("Brooklyn Nets",2), "Milwaukee Bucks", "Brooklyn Nets", "Milwaukee Bucks"),
+          c(rep("Dallas Mavericks",2), rep("Utah Jazz",2), "Dallas Mavericks", "Utah Jazz", "Dallas Mavericks"),
+          c(rep("Los Angeles Lakers",2), rep("Portland Trail Blazers",2), "Los Angeles Lakers", "Portland Trail Blazers", "Los Angeles Lakers")
+)
+
+round_2 <- data.frame(
+           Year = 2021,
+           Away = away,
+           Home = home,
+           Winner = NA_character_,
+           stringsAsFactors = F)
+
+r2 <- round_2 %>% 
+  left_join(NBA_21, by = c("Home" = "Team", "Year")) %>% 
+  left_join(NBA_21, by = c("Away" = "Team", "Year"), suffix = c("_home", "_away"))
+write_csv(r2, "r2.csv")
+
+
+```
+
+```{r}
+NBA_21 <- read.csv("NBA_21.csv", row.names = 1)
+home <- c(c(rep("Utah Jazz",2), rep("Portland Trail Blazers",2),"Utah Jazz", "Portland Trail Blazers", "Utah Jazz"),
+         c(rep("Philadelphia 76ers",2), rep("Brooklyn Nets",2),"Philadelphia 76ers", "Brooklyn Nets", "Philadelphia 76ers")
+)
+
+away <- c(c(rep("Portland Trail Blazers",2), rep("Utah Jazz",2), "Portland Trail Blazers", "Utah Jazz", "Portland Trail Blazers"),
+          c(rep("Brooklyn Nets",2), rep("Philadelphia 76ers",2), "Brooklyn Nets", "Philadelphia 76ers", "Brooklyn Nets"))
+round_3 <- data.frame(
+           Year = 2021,
+           Away = away,
+           Home = home,
+           Winner = NA_character_,
+           stringsAsFactors = F)
+
+r3 <- round_3 %>% 
+  left_join(NBA_21, by = c("Home" = "Team", "Year")) %>% 
+  left_join(NBA_21, by = c("Away" = "Team", "Year"), suffix = c("_home", "_away"))
+write_csv(r3, "r3.csv")
+
+
+```
+
 
 
 

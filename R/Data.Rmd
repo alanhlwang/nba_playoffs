@@ -1,0 +1,62 @@
+---
+title: "Data"
+author: "Name: Alan Wang"
+date: "5/13/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+---
+output: pdf_document
+geometry: "left=2cm,right=2cm,top=3cm,bottom=3cm"
+header-includes:
+  - \usepackage{pdfpages}
+  - \usepackage{fancyhdr}
+  - \pagestyle{fancy}
+---
+
+# Links to data:
+[https://www.basketball-reference.com/playoffs/NBA_2020_games.html](https://www.basketball-reference.com/playoffs/NBA_2020_games.html)
+
+
+[https://github.com/hanesy/NBA_Playoffs/blob/master/NBA_data/NBA_data_all_80-19.csv](https://github.com/hanesy/NBA_Playoffs/blob/master/NBA_data/NBA_data_all_80-19.csv)
+
+
+# Glimpse at Data
+```{r, warning = FALSE, message = FALSE}
+library(tidyverse)
+NBA_data <- read.csv("NBA_data.csv")
+
+NBA_data %>% 
+  select(c(2,3,4,5,20, 30, 40)) %>% 
+  head()
+```
+
+# Overview of Features
+```{r, warning = FALSE, message = FALSE}
+NBA_data %>% 
+  select(-c(1,5)) %>% 
+  names()
+
+NBA_data %>% 
+  select(-c(1,5)) %>% 
+  summary()
+```
+
+# Overview of Response 
+```{r, warning = FALSE, message = FALSE}
+NBA_data %>% 
+  select(2:5) %>% 
+  head()
+
+ NBA_data %>%  
+  select(Winner) %>% 
+  group_by(Winner) %>% 
+  summarise(n = n())
+```
+
+
+
+

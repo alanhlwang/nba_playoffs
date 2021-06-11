@@ -358,13 +358,14 @@ away_score <- session %>%
   years_data[[test_years[i]]] <- current_data
 }
 
+years_df
 
 
 years_data <- years_data[order(names(years_data))]
 write_rds(years_data, "year_game_by_game.rds")
 
 years_df <- rbindlist(years_data, )
-write_csv(years_df, "year_game_by_game.csv")
+write_csv(years_df, "year_game_by_game.csv", stringsAsFactors = F)
 ```
 
 
@@ -475,7 +476,6 @@ write_csv(years_df, "year_game_by_game.csv")
 #   group_by(Conf) %>% 
 #   group_split()
 ```
-
 
 
 
